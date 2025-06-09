@@ -33,7 +33,23 @@ TV_SO2_Flux_2020-2024 has its "Date" column type as string. We need to change it
 # with pd.ExcelWriter("edited/Volcanic_Parameters_2013-2024.xlsx") as writer:
 #     volcanic_parameters.to_excel(writer)
 
+#%% Addressing Data Inconsistency
+
+# water_paramaters["Date"] = pd.to_datetime(water_paramaters["Date"])
+
+# monthly_water_param = water_paramaters.set_index("Date")
+# monthly_water_param = monthly_water_param.drop(columns="Location")
+# monthly_water_param.iloc[430, 5] = 0.09
+
+# print(monthly_water_param.info())
+
+# monthly_water_param["Nitrate-N/Nitrite-N  (mg/L)"] = pd.to_numeric(monthly_water_param["Nitrate-N/Nitrite-N  (mg/L)"])
+# print(monthly_water_param.dtypes)
+
+# with pd.ExcelWriter("edited/Water_Parameters_2013-2025.xlsx") as writer:
+#     monthly_water_param.to_excel(writer)
+
 #%% Data contents
-print(f"Water Parameter Null Values: \n{water_paramaters.isna().sum()}\n")
-print(f"Climatological Parameter Null Values: \n{clim_paramaters.isna().sum()}\n")
-print(f"Volcanic Parameter Null Values: \n{volcanic_parameters.isna().sum()}")
+# print(f"Water Parameter Null Values: \n{water_paramaters.isna().sum()}\n")
+# print(f"Climatological Parameter Null Values: \n{clim_paramaters.isna().sum()}\n")
+# print(f"Volcanic Parameter Null Values: \n{volcanic_parameters.isna().sum()}")
