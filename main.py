@@ -2,16 +2,19 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-with open("raw/Water-Parameters_2013-2025-CpE-copy.xlsx", "rb") as f1, \
+with open("edited/Water_Parameters_2013-2025.xlsx", "rb") as f5, \
+     open("edited/Climatological_Parameters_2013-2025.xlsx", "rb") as f6, \
      open("edited/Volcanic_Parameters_2013-2024.xlsx", "rb") as f4:
+     # open("raw/Water-Parameters_2013-2025-CpE-copy.xlsx", rb) as f1, \
      # open("raw/TV_CO2_Flux_2013-2019.xlsx", "rb") as f2, \
      # open("edited/SO2_Flux_2020-2024.xlsx", "rb") as f3:
-    water_paramaters = pd.read_excel(f1)
+    water_paramaters = pd.read_excel(f5)
+    clim_paramaters = pd.read_excel(f6)
     volcanic_parameters = pd.read_excel(f4, index_col=[0, 1])
     # vol_param1 = pd.read_excel(f2)
     # vol_param2 = pd.read_excel(f3, index_col=0)
 
-clim_paramaters = pd.read_csv("raw/Ambulong Monthly Data.csv")
+# clim_paramaters = pd.read_csv("raw/Ambulong Monthly Data.csv")
 
 #%% Editing Volcanic Parameters 2
 
@@ -33,7 +36,7 @@ TV_SO2_Flux_2020-2024 has its "Date" column type as string. We need to change it
 # with pd.ExcelWriter("edited/Volcanic_Parameters_2013-2024.xlsx") as writer:
 #     volcanic_parameters.to_excel(writer)
 
-#%% Addressing Data Inconsistency
+#%% Addressing Data Inconsistency of Water Parameters
 
 # water_paramaters["Date"] = pd.to_datetime(water_paramaters["Date"])
 
@@ -48,6 +51,15 @@ TV_SO2_Flux_2020-2024 has its "Date" column type as string. We need to change it
 
 # with pd.ExcelWriter("edited/Water_Parameters_2013-2025.xlsx") as writer:
 #     monthly_water_param.to_excel(writer)
+
+#%% Editing Climatological Data
+
+# clim_paramaters["Date"] = pd.to_datetime(clim_paramaters[["YEAR", "MONTH"]].assign(day=1))
+# clim_paramaters = clim_paramaters.drop(columns=["YEAR", "MONTH"])
+# clim_paramaters = clim_paramaters.set_index("Date")
+
+# with pd.ExcelWriter("edited/Climatological_Parameters_2013-2025.xlsx") as writer:
+#     clim_paramaters.to_excel(writer)
 
 #%% Data contents
 # print(f"Water Parameter Null Values: \n{water_paramaters.isna().sum()}\n")
