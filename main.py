@@ -11,7 +11,7 @@ with open("edited/Water_Parameters_2013-2025.xlsx", "rb") as f5, \
      # open("edited/SO2_Flux_2020-2024.xlsx", "rb") as f3:
     water_paramaters = pd.read_excel(f5)
     clim_paramaters = pd.read_excel(f6)
-    volcanic_parameters = pd.read_excel(f4, index_col=[0, 1])
+    volcanic_parameters = pd.read_excel(f4)
     # vol_param1 = pd.read_excel(f2)
     # vol_param2 = pd.read_excel(f3, index_col=0)
 
@@ -36,6 +36,22 @@ TV_SO2_Flux_2020-2024 has its "Date" column type as string. We need to change it
 # Save the changes to another .xlsx file
 # with pd.ExcelWriter("edited/Volcanic_Parameters_2013-2024.xlsx") as writer:
 #     volcanic_parameters.to_excel(writer)
+
+# volcanic_parameters["Date"] = pd.to_datetime(volcanic_parameters["Date"])
+# volcanic_parameters = volcanic_parameters.set_index("Date")
+
+# volcanic_parameters = volcanic_parameters.set_index("Date")
+
+# volcanic_parameters = volcanic_parameters.resample("MS").first()
+
+# volcanic_parameters = volcanic_parameters.resample("M").mean()
+# volcanic_parameters = volcanic_parameters.reset_index(names="Date")
+# volcanic_parameters["Date"] = pd.to_datetime(volcanic_parameters["Date"]).apply(lambda x: x.replace(day=1))
+# volcanic_parameters = volcanic_parameters.set_index("Date")
+
+# with pd.ExcelFile("edited/Volcanic_Parameters_2013-2024.xlsx") as writer:
+#     volcanic_parameters.to_excel(writer)
+
 
 #%% Addressing Data Inconsistency of Water Parameters
 
@@ -62,7 +78,12 @@ TV_SO2_Flux_2020-2024 has its "Date" column type as string. We need to change it
 # with pd.ExcelWriter("edited/Climatological_Parameters_2013-2025.xlsx") as writer:
 #     clim_paramaters.to_excel(writer)
 
+#%% Data Concatination
+
+data = pd.concat([water_paramaters, clim_paramaters, volcanic_parameters], keys="Date", axis=1)
+print(data.info())
+
 #%% Data contents
-print(water_paramaters)
-print(clim_paramaters)
-print(volcanic_parameters)
+print(water_paramaters.info())
+print(clim_paramaters.info())
+print(volcanic_parameters.info())
