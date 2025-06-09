@@ -1,11 +1,12 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from datetime import datetime
 
 with open("edited/Water_Parameters_2013-2025.xlsx", "rb") as f5, \
      open("edited/Climatological_Parameters_2013-2025.xlsx", "rb") as f6, \
      open("edited/Volcanic_Parameters_2013-2024.xlsx", "rb") as f4:
-     # open("raw/Water-Parameters_2013-2025-CpE-copy.xlsx", rb) as f1, \
+     # open("raw/Water-Parameters_2013-2025-CpE-copy.xlsx", "rb") as f1:
      # open("raw/TV_CO2_Flux_2013-2019.xlsx", "rb") as f2, \
      # open("edited/SO2_Flux_2020-2024.xlsx", "rb") as f3:
     water_paramaters = pd.read_excel(f5)
@@ -38,19 +39,19 @@ TV_SO2_Flux_2020-2024 has its "Date" column type as string. We need to change it
 
 #%% Addressing Data Inconsistency of Water Parameters
 
-# water_paramaters["Date"] = pd.to_datetime(water_paramaters["Date"])
+# water_paramaters = water_paramaters.drop(columns="Location")
+# water_paramaters.iloc[430, 6] = 0.09
 
-# monthly_water_param = water_paramaters.set_index("Date")
-# monthly_water_param = monthly_water_param.drop(columns="Location")
-# monthly_water_param.iloc[430, 5] = 0.09
+# water_paramaters["Nitrate-N/Nitrite-N  (mg/L)"] = pd.to_numeric(water_paramaters["Nitrate-N/Nitrite-N  (mg/L)"])
 
-# print(monthly_water_param.info())
-
-# monthly_water_param["Nitrate-N/Nitrite-N  (mg/L)"] = pd.to_numeric(monthly_water_param["Nitrate-N/Nitrite-N  (mg/L)"])
-# print(monthly_water_param.dtypes)
+# water_paramaters = water_paramaters.set_index("Date")
+# water_paramaters = water_paramaters.resample("M").mean()
+# water_paramaters = water_paramaters.reset_index(names="Date")
+# water_paramaters["Date"] = pd.to_datetime(water_paramaters["Date"]).apply(lambda x: x.replace(day=1))
+# water_paramaters = water_paramaters.set_index("Date")
 
 # with pd.ExcelWriter("edited/Water_Parameters_2013-2025.xlsx") as writer:
-#     monthly_water_param.to_excel(writer)
+#     water_paramaters.to_excel(writer)
 
 #%% Editing Climatological Data
 
@@ -62,6 +63,6 @@ TV_SO2_Flux_2020-2024 has its "Date" column type as string. We need to change it
 #     clim_paramaters.to_excel(writer)
 
 #%% Data contents
-# print(f"Water Parameter Null Values: \n{water_paramaters.isna().sum()}\n")
-# print(f"Climatological Parameter Null Values: \n{clim_paramaters.isna().sum()}\n")
-# print(f"Volcanic Parameter Null Values: \n{volcanic_parameters.isna().sum()}")
+print(water_paramaters)
+print(clim_paramaters)
+print(volcanic_parameters)
