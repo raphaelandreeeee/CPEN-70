@@ -1,7 +1,9 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from datetime import datetime
+import sklearn
+import torch 
+
 
 with open("edited/Water_Parameters_2013-2025.xlsx", "rb") as f5, \
      open("edited/Climatological_Parameters_2013-2025.xlsx", "rb") as f6, \
@@ -77,13 +79,3 @@ TV_SO2_Flux_2020-2024 has its "Date" column type as string. We need to change it
 
 # with pd.ExcelWriter("edited/Climatological_Parameters_2013-2025.xlsx") as writer:
 #     clim_paramaters.to_excel(writer)
-
-#%% Data Concatination
-
-data = pd.concat([water_paramaters, clim_paramaters, volcanic_parameters], keys="Date", axis=1)
-print(data.info())
-
-#%% Data contents
-print(water_paramaters.info())
-print(clim_paramaters.info())
-print(volcanic_parameters.info())
