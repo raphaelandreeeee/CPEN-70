@@ -112,7 +112,7 @@ train_dataset = WaterQualityDataset(X_train, y_train)
 test_dataset = WaterQualityDataset(X_test, y_test)
 
 batch_size = 16
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False)
 test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
 
