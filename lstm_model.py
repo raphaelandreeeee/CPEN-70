@@ -25,14 +25,14 @@ for col in data.columns[1:]:
 def calculate_wqi(row):
     # Weight factors for different parameters (can be adjusted based on importance)
     weights = {
-        'Surface Water Temp (°C)': 0.1,
-        'Middle Water Temp (°C)': 0.1,
-        'Bottom Water Temp (°C)': 0.1,
+        'Surface Water Temp (°C)': 0.03,
+        'Middle Water Temp (°C)': 0.03,
+        'Bottom Water Temp (°C)': 0.03,
         'pH Level': 0.2,
-        'Ammonia (mg/L)': 0.15,
+        'Ammonia (mg/L)': 0.2,
         'Nitrate-N/Nitrite-N  (mg/L)': 0.15,
-        'Phosphate (mg/L)': 0.1,
-        'Dissolved Oxygen (mg/L)': 0.1
+        'Phosphate (mg/L)': 0.15,
+        'Dissolved Oxygen (mg/L)': 0.2
     }
     
     # Normalize each parameter (0-100 scale, higher is better for most)
@@ -88,13 +88,18 @@ X, y = create_sequences(scaled_features, seq_length)
 X_target, y_target = create_sequences(scaled_target, seq_length)
 
 # Split data into train and test sets
-X_train, X_test, y_train, y_test = train_test_split(X, y_target, test_size=0.2, random_state=42)
+X_train, X_train_val, y_train, y_train_val = train_test_split(X, y_target, test_size=0.4, random_state=42)
+
+X_test, X_val, y_test, y_val = train_test_split(X_train_val, y_train_val, test_size=0.5, random_state=42)
 
 # Convert to PyTorch tensors
 X_train = torch.FloatTensor(X_train).unsqueeze(1)  # Add channel dimension for CNN
 X_test = torch.FloatTensor(X_test).unsqueeze(1)
+X_val = torch.FloatTensor(X_val)
 y_train = torch.FloatTensor(y_train)
 y_test = torch.FloatTensor(y_test)
+y_val = torch.FloatTensor(y_val)
+
 
 # Create PyTorch Dataset
 class WaterQualityDataset(Dataset):
@@ -110,20 +115,22 @@ class WaterQualityDataset(Dataset):
 
 train_dataset = WaterQualityDataset(X_train, y_train)
 test_dataset = WaterQualityDataset(X_test, y_test)
+val_dataset = WaterQualityDataset(X_val, y_val)
 
 batch_size = 16
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False)
 test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
 
-# CNN Model
-class WQICNN(nn.Module):
+# LSTM Model
+class WQILSTM(nn.Module):
     def __init__(self):
-        super(WQICNN, self).__init__()
+        super(WQILSTM, self).__init__()
         self.conv1 = nn.Conv1d(in_channels=8, out_channels=32, kernel_size=3, padding=1)  
         self.conv2 = nn.Conv1d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
         self.pool = nn.MaxPool1d(kernel_size=2)
-        self.dropout = nn.Dropout(0.2)
+        self.dropout = nn.Dropout(0.5)
         
         # Calculate the size after convolutions and pooling
         self.fc1 = nn.Linear(64, 128)
@@ -149,46 +156,80 @@ class WQICNN(nn.Module):
 
 if __name__ == '__main__':
     # Initialize model, loss function, and optimizer
-    model = WQICNN()
+    model = WQILSTM()
     criterion = nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)
+
+    # Early stop parameters
+    patience = 20
+    best_val_loss = float('inf')
+    epochs_no_improve = 0
 
     # Training loop
-    num_epochs = 100
+    num_epochs = 150
     train_losses = []
     test_losses = []
+    val_losses = []
 
     for epoch in range(num_epochs):
         model.train()
-        running_loss = 0.0
-        for inputs, labels in train_loader:
+        train_loss = 0.0
+        features, labels = next(iter(train_loader))
+        for _ in range(100):
             optimizer.zero_grad()
-            outputs = model(inputs)
+            outputs = model(features)
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
-            running_loss += loss.item()
+            train_loss += loss.item()
         
-        train_loss = running_loss / len(train_loader)
-        train_losses.append(train_loss)
+        avg_train_loss = train_loss / len(train_loader)
+        train_losses.append(avg_train_loss)
         
-        # Test loss
+        # Validation loss
         model.eval()
+        val_loss = 0.0
+        with torch.no_grad():
+            for inputs, labels in val_loader:
+                outputs = model(inputs)
+                val_loss += criterion(outputs, labels).item()
+        
+        avg_val_loss = val_loss / len(val_loader)
+        val_losses.append(avg_val_loss)
+
+         # Test loss
         test_loss = 0.0
         with torch.no_grad():
             for inputs, labels in test_loader:
                 outputs = model(inputs)
                 test_loss += criterion(outputs, labels).item()
         
-        test_loss = test_loss / len(test_loader)
-        test_losses.append(test_loss)
-        
+        avg_test_loss = test_loss / len(test_loader)
+        test_losses.append(avg_test_loss)
+
+        # Print progress
         if (epoch + 1) % 10 == 0:
-            print(f'Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}, Test Loss: {test_loss:.4f}')
+            print(f'Epoch {epoch+1}/{num_epochs}: '
+                  f'Train Loss: {avg_train_loss:.6f}, '
+                  f'Val Loss: {avg_val_loss:.6f}, '
+                  f'Test Loss: {avg_test_loss:.6f}')
+            
+         # Early stopping check
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            torch.save(model.state_dict(), 'best_model.pth')
+            epochs_no_improve = 0
+        else:
+            epochs_no_improve += 1
+            if epochs_no_improve >= patience:
+                print(f'\nEarly stopping at epoch {epoch+1}')
+                break
+
 
     # Plot training history
     plt.plot(train_losses, label='Training Loss')
     plt.plot(test_losses, label='Test Loss')
+    plt.plot(val_losses, label='Validation Loss')
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.legend()
@@ -212,4 +253,4 @@ if __name__ == '__main__':
     plt.show()
 
     # Save the model
-    torch.save(model.state_dict(), 'wqi_cnn_model.pth')
+    torch.save(model.state_dict(), 'wqi_lstm_model.pth')
