@@ -5,16 +5,33 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
+from datetime import datetime, timedelta
 
 # Load the data
-with open("edited/Water_Parameters_2013-2025.xlsx", "rb") as file:
-    data = pd.read_excel(file)
+with open("edited/Water_Parameters_2013-2025.xlsx", "rb") as f1, \
+     open("edited/Climatological_Parameters_2013-2025.xlsx", "rb") as f2, \
+     open("edited/Volcanic_Parameters_2013-2024.xlsx", "rb") as f3:
+    data = pd.read_excel(f1)
+    ex_data1 = pd.read_excel(f2)
+    ex_data2 = pd.read_excel(f3)
 
-# Data Preprocessing
-# Drop rows with too many missing values
-data = data.dropna(thresh=len(data.columns) - 3)
+# DATA PROCESSING
+# # Drop rows with too many missing values
+# data = data.dropna(thresh=len(data.columns) - 3)
+
+# Drop unnecessary columns
+ex_data1 = ex_data1.drop(columns=["RH", "WIND_SPEED", "WIND_DIRECTION"])
+ex_data1["T_AVE"] = (ex_data1["TMIN"] + ex_data1["TMAX"]) / 2
+ex_data1 = ex_data1.drop(columns=["TMIN", "TMAX"])
+
+# Augment external factors to data
+data["Rainfall"] = ex_data1["RAINFALL"]
+data["Env_Temperature"] = ex_data1["T_AVE"]
+data["CO2"] = ex_data2["CO2 Flux (t/d)"]
+data["SO2"] = ex_data2["SO2 Flux (t/d)"]
 
 # Fill missing values with column means
 for col in data.columns[1:]:
@@ -64,10 +81,10 @@ data['WQI'] = data.apply(calculate_wqi, axis=1)
 # Feature selection - use all available parameters
 features = ['Surface Water Temp (°C)', 'Middle Water Temp (°C)', 'Bottom Water Temp (°C)', 
             'pH Level', 'Ammonia (mg/L)', 'Nitrate-N/Nitrite-N  (mg/L)', 
-            'Phosphate (mg/L)', 'Dissolved Oxygen (mg/L)']
+            'Phosphate (mg/L)', 'Dissolved Oxygen (mg/L)', 'Rainfall', 'Env_Temperature', 'CO2', 'SO2']
 target = 'WQI'
 
-# Prepare data for CNN (we'll treat the time series as 1D "images")
+# Prepare data for LSTM (we'll treat the time series as 1D "images")
 def create_sequences(data, seq_length):
     xs, ys = [], []
     for i in range(len(data) - seq_length):
@@ -77,23 +94,27 @@ def create_sequences(data, seq_length):
         ys.append(y)
     return np.array(xs), np.array(ys)
 
-# Normalize features
-scaler = StandardScaler()
-scaled_features = scaler.fit_transform(data[features])
-scaled_target = MinMaxScaler().fit_transform(data[[target]])
+# Save scalers for future use
+feature_scaler = StandardScaler()
+target_scaler = MinMaxScaler()
+
+# Apply scaling
+scaled_features = feature_scaler.fit_transform(data[features])
+scaled_target = target_scaler.fit_transform(data[[target]])
 
 # Create sequences
 seq_length = 6  # using 6 months of data to predict next month's WQI
 X, y = create_sequences(scaled_features, seq_length)
 X_target, y_target = create_sequences(scaled_target, seq_length)
 
-# Split data into train, test, and validation sets
+# Split data into train and test sets
 X_train, X_train_val, y_train, y_train_val = train_test_split(X, y_target, test_size=0.4, random_state=42)
+
 X_test, X_val, y_test, y_val = train_test_split(X_train_val, y_train_val, test_size=0.5, random_state=42)
 
 # Convert to PyTorch tensors
-X_train = torch.FloatTensor(X_train).unsqueeze(1)  # Add channel dimension for CNN
-X_test = torch.FloatTensor(X_test).unsqueeze(1)
+X_train = torch.FloatTensor(X_train)
+X_test = torch.FloatTensor(X_test)
 X_val = torch.FloatTensor(X_val)
 y_train = torch.FloatTensor(y_train)
 y_test = torch.FloatTensor(y_test)
@@ -112,7 +133,6 @@ class WaterQualityDataset(Dataset):
     def __getitem__(self, idx):
         return self.features[idx], self.targets[idx]
 
-# Create train, test, validation datasets
 train_dataset = WaterQualityDataset(X_train, y_train)
 test_dataset = WaterQualityDataset(X_test, y_test)
 val_dataset = WaterQualityDataset(X_val, y_val)
@@ -124,39 +144,50 @@ val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
 
 # LSTM Model
+# LSTM Model Definition
 class WQILSTM(nn.Module):
-    def __init__(self):
+    def __init__(self, input_size, hidden_size=64, num_layers=2):
         super(WQILSTM, self).__init__()
-        self.conv1 = nn.Conv1d(in_channels=8, out_channels=32, kernel_size=3, padding=1)  
-        self.conv2 = nn.Conv1d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
-        self.pool = nn.MaxPool1d(kernel_size=2)
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        
+        # LSTM layer
+        self.lstm = nn.LSTM(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            batch_first=True,
+            dropout=0.3 if num_layers > 1 else 0
+        )
+        
+        # Fully connected layers
+        self.fc1 = nn.Linear(hidden_size, 32)
+        self.fc2 = nn.Linear(32, 1)
         self.dropout = nn.Dropout(0.5)
         
-        # Calculate the size after convolutions and pooling
-        self.fc1 = nn.Linear(64, 128)
-        self.fc2 = nn.Linear(128, 64)
-        self.fc3 = nn.Linear(64, 1)
-        
     def forward(self, x):
-        x = x.squeeze(1).permute(0, 2, 1)
+        # Initialize hidden state and cell state
+        device = x.device
+        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(device)
+        c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(device)
         
-        x = torch.relu(self.conv1(x))
-        x = self.pool(x)
-        x = torch.relu(self.conv2(x))
-        x = self.pool(x)
-        x = self.dropout(x)
+        # LSTM forward pass
+        out, _ = self.lstm(x, (h0, c0))  # out shape: (batch_size, seq_len, hidden_size)
         
-        x = x.view(x.size(0), -1)  # Flatten
-        x = torch.relu(self.fc1(x))
-        x = self.dropout(x)
-        x = torch.relu(self.fc2(x))
-        x = self.fc3(x)
-        return x
-
-
+        # Take the output from the last timestep
+        out = out[:, -1, :]  # shape: (batch_size, hidden_size)
+        
+        # Fully connected layers
+        out = torch.relu(self.fc1(out))
+        out = self.dropout(out)
+        out = self.fc2(out)
+        return out
+    
+    
 if __name__ == '__main__':
-    # Initialize model, loss function, and optimizer
-    model = WQILSTM()
+    # Initialize LSTM model
+    num_features = len(features)
+    model = WQILSTM(input_size=num_features)
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)
 
@@ -174,8 +205,9 @@ if __name__ == '__main__':
     for epoch in range(num_epochs):
         model.train()
         train_loss = 0.0
-        features, labels = next(iter(train_loader))
-        for _ in range(100):
+        # features, labels = next(iter(train_loader))
+        # for _ in range(100):    # Overfitting the training set
+        for features, labels in train_loader:
             optimizer.zero_grad()
             outputs = model(features)
             loss = criterion(outputs, labels)
@@ -215,16 +247,44 @@ if __name__ == '__main__':
                   f'Test Loss: {avg_test_loss:.6f}')
             
          # Early stopping check
-        if avg_val_loss < best_val_loss:
-            best_val_loss = avg_val_loss
-            torch.save(model.state_dict(), 'best_model.pth')
-            epochs_no_improve = 0
-        else:
-            epochs_no_improve += 1
-            if epochs_no_improve >= patience:
-                print(f'\nEarly stopping at epoch {epoch+1}')
-                break
+        # if avg_val_loss < best_val_loss:
+        #     best_val_loss = avg_val_loss
+        #     torch.save(model.state_dict(), 'best_model.pth')
+        #     epochs_no_improve = 0
+        # else:
+        #     epochs_no_improve += 1
+        #     if epochs_no_improve >= patience:
+        #         print(f'\nEarly stopping at epoch {epoch+1}')
+        #         break
 
+
+ # Evaluate the model on test set
+    model.eval()
+    test_preds = []
+    test_actual = []
+    with torch.no_grad():
+        for inputs, labels in test_loader:
+            outputs = model(inputs)
+            test_preds.extend(outputs.numpy())
+            test_actual.extend(labels.numpy())
+    
+    test_preds = np.array(test_preds)
+    test_actual = np.array(test_actual)
+    
+    # Inverse transform predictions
+    test_preds_orig = target_scaler.inverse_transform(test_preds.reshape(-1, 1))
+    test_actual_orig = target_scaler.inverse_transform(test_actual.reshape(-1, 1))
+    
+    # Calculate quantitative metrics
+    rmse = np.sqrt(mean_squared_error(test_actual_orig, test_preds_orig))
+    r2 = r2_score(test_actual_orig, test_preds_orig)
+    mae = np.mean(np.abs(test_actual_orig - test_preds_orig))
+    
+    print(f"\nQuantitative Analysis on Test Set:\n"
+          f"RMSE: {rmse:.4f}\n"
+          f"MAE: {mae:.4f}\n"
+          f"R²: {r2:.4f}\n"
+    )
 
     # Plot training history
     plt.plot(train_losses, label='Training Loss')
@@ -235,12 +295,6 @@ if __name__ == '__main__':
     plt.legend()
     plt.title('Training History')
     plt.show()
-
-    # Evaluate the model
-    model.eval()
-    with torch.no_grad():
-        test_preds = model(X_test).numpy()
-        test_actual = y_test.numpy()
 
     # Plot predictions vs actual
     plt.figure(figsize=(10, 6))

@@ -84,7 +84,7 @@ features = ['Surface Water Temp (°C)', 'Middle Water Temp (°C)', 'Bottom Water
             'Phosphate (mg/L)', 'Dissolved Oxygen (mg/L)', 'Rainfall', 'Env_Temperature', 'CO2', 'SO2']
 target = 'WQI'
 
-# Prepare data for CNN (we'll treat the time series as 1D "images")
+# Prepare data for CNNLSTM (we'll treat the time series as 1D "images")
 def create_sequences(data, seq_length):
     xs, ys = [], []
     for i in range(len(data) - seq_length):
@@ -113,7 +113,7 @@ X_train, X_train_val, y_train, y_train_val = train_test_split(X, y_target, test_
 X_test, X_val, y_test, y_val = train_test_split(X_train_val, y_train_val, test_size=0.5, random_state=42)
 
 # Convert to PyTorch tensors
-X_train = torch.FloatTensor(X_train).unsqueeze(1)  # Add channel dimension for CNN
+X_train = torch.FloatTensor(X_train).unsqueeze(1)  # Add channel dimension for CNNLSTM
 X_test = torch.FloatTensor(X_test).unsqueeze(1)
 X_val = torch.FloatTensor(X_val)
 y_train = torch.FloatTensor(y_train)
@@ -143,10 +143,10 @@ test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
 
-# CNN Model
-class WQICNN(nn.Module):
+# CNNLSTM Model
+class WQICNNLSTM(nn.Module):
     def __init__(self):
-        super(WQICNN, self).__init__()
+        super(WQICNNLSTM, self).__init__()
         self.conv1 = nn.Conv1d(in_channels=12, out_channels=32, kernel_size=3, padding=1)  
         self.conv2 = nn.Conv1d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
         self.pool = nn.MaxPool1d(kernel_size=2)
@@ -176,7 +176,7 @@ class WQICNN(nn.Module):
     
 if __name__ == '__main__':
     # Initialize model, loss function, and optimizer
-    model = WQICNN()
+    model = WQICNNLSTM()
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)
 
@@ -296,4 +296,4 @@ if __name__ == '__main__':
     plt.show()
 
     # Save the model
-    torch.save(model.state_dict(), 'wqi_cnn_model.pth')
+    torch.save(model.state_dict(), 'wqi_cnn-lstm_model.pth')
