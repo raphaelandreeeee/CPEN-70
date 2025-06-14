@@ -87,9 +87,8 @@ seq_length = 6  # using 6 months of data to predict next month's WQI
 X, y = create_sequences(scaled_features, seq_length)
 X_target, y_target = create_sequences(scaled_target, seq_length)
 
-# Split data into train and test sets
+# Split data into train, test, and validation sets
 X_train, X_train_val, y_train, y_train_val = train_test_split(X, y_target, test_size=0.4, random_state=42)
-
 X_test, X_val, y_test, y_val = train_test_split(X_train_val, y_train_val, test_size=0.5, random_state=42)
 
 # Convert to PyTorch tensors
@@ -113,6 +112,7 @@ class WaterQualityDataset(Dataset):
     def __getitem__(self, idx):
         return self.features[idx], self.targets[idx]
 
+# Create train, test, validation datasets
 train_dataset = WaterQualityDataset(X_train, y_train)
 test_dataset = WaterQualityDataset(X_test, y_test)
 val_dataset = WaterQualityDataset(X_val, y_val)

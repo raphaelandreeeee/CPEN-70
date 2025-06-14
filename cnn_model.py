@@ -5,16 +5,32 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 
 # Load the data
-with open("edited/Water_Parameters_2013-2025.xlsx", "rb") as file:
-    data = pd.read_excel(file)
+with open("edited/Water_Parameters_2013-2025.xlsx", "rb") as f1, \
+     open("edited/Climatological_Parameters_2013-2025.xlsx", "rb") as f2, \
+     open("edited/Volcanic_Parameters_2013-2024.xlsx", "rb") as f3:
+    data = pd.read_excel(f1)
+    ex_data1 = pd.read_excel(f2)
+    ex_data2 = pd.read_excel(f3)
 
-# Data Preprocessing
-# Drop rows with too many missing values
-data = data.dropna(thresh=len(data.columns) - 3)
+# DATA PROCESSING
+# # Drop rows with too many missing values
+# data = data.dropna(thresh=len(data.columns) - 3)
+
+# Drop unnecessary columns
+ex_data1 = ex_data1.drop(columns=["RH", "WIND_SPEED", "WIND_DIRECTION"])
+ex_data1["T_AVE"] = (ex_data1["TMIN"] + ex_data1["TMAX"]) / 2
+ex_data1 = ex_data1.drop(columns=["TMIN", "TMAX"])
+
+# Augment external factors to data
+data["Rainfall"] = ex_data1["RAINFALL"]
+data["Env_Temperature"] = ex_data1["T_AVE"]
+data["CO2"] = ex_data2["CO2 Flux (t/d)"]
+data["SO2"] = ex_data2["SO2 Flux (t/d)"]
 
 # Fill missing values with column means
 for col in data.columns[1:]:
@@ -64,7 +80,7 @@ data['WQI'] = data.apply(calculate_wqi, axis=1)
 # Feature selection - use all available parameters
 features = ['Surface Water Temp (°C)', 'Middle Water Temp (°C)', 'Bottom Water Temp (°C)', 
             'pH Level', 'Ammonia (mg/L)', 'Nitrate-N/Nitrite-N  (mg/L)', 
-            'Phosphate (mg/L)', 'Dissolved Oxygen (mg/L)']
+            'Phosphate (mg/L)', 'Dissolved Oxygen (mg/L)', 'Rainfall', 'Env_Temperature', 'CO2', 'SO2']
 target = 'WQI'
 
 # Prepare data for CNN (we'll treat the time series as 1D "images")
@@ -77,10 +93,13 @@ def create_sequences(data, seq_length):
         ys.append(y)
     return np.array(xs), np.array(ys)
 
-# Normalize features
-scaler = StandardScaler()
-scaled_features = scaler.fit_transform(data[features])
-scaled_target = MinMaxScaler().fit_transform(data[[target]])
+# Save scalers for future use
+feature_scaler = StandardScaler()
+target_scaler = MinMaxScaler()
+
+# Apply scaling
+scaled_features = feature_scaler.fit_transform(data[features])
+scaled_target = target_scaler.fit_transform(data[[target]])
 
 # Create sequences
 seq_length = 6  # using 6 months of data to predict next month's WQI
@@ -127,7 +146,7 @@ val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 class WQICNN(nn.Module):
     def __init__(self):
         super(WQICNN, self).__init__()
-        self.conv1 = nn.Conv1d(in_channels=8, out_channels=32, kernel_size=3, padding=1)  
+        self.conv1 = nn.Conv1d(in_channels=12, out_channels=32, kernel_size=3, padding=1)  
         self.conv2 = nn.Conv1d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
         self.pool = nn.MaxPool1d(kernel_size=2)
         self.dropout = nn.Dropout(0.5)
@@ -174,8 +193,9 @@ if __name__ == '__main__':
     for epoch in range(num_epochs):
         model.train()
         train_loss = 0.0
-        features, labels = next(iter(train_loader))
-        for _ in range(100):
+        # features, labels = next(iter(train_loader))
+        # for _ in range(100):    # Overfitting the training set
+        for features, labels in train_loader:
             optimizer.zero_grad()
             outputs = model(features)
             loss = criterion(outputs, labels)
@@ -226,6 +246,34 @@ if __name__ == '__main__':
                 break
 
 
+ # Evaluate the model on test set
+    model.eval()
+    test_preds = []
+    test_actual = []
+    with torch.no_grad():
+        for inputs, labels in test_loader:
+            outputs = model(inputs)
+            test_preds.extend(outputs.numpy())
+            test_actual.extend(labels.numpy())
+    
+    test_preds = np.array(test_preds)
+    test_actual = np.array(test_actual)
+    
+    # Inverse transform predictions
+    test_preds_orig = target_scaler.inverse_transform(test_preds.reshape(-1, 1))
+    test_actual_orig = target_scaler.inverse_transform(test_actual.reshape(-1, 1))
+    
+    # Calculate quantitative metrics
+    rmse = np.sqrt(mean_squared_error(test_actual_orig, test_preds_orig))
+    r2 = r2_score(test_actual_orig, test_preds_orig)
+    mae = np.mean(np.abs(test_actual_orig - test_preds_orig))
+    
+    print(f"\nQuantitative Analysis on Test Set:\n"
+          f"RMSE: {rmse:.4f}\n"
+          f"MAE: {mae:.4f}\n"
+          f"R²: {r2:.4f}\n"
+    )
+
     # Plot training history
     plt.plot(train_losses, label='Training Loss')
     plt.plot(test_losses, label='Test Loss')
@@ -235,12 +283,6 @@ if __name__ == '__main__':
     plt.legend()
     plt.title('Training History')
     plt.show()
-
-    # Evaluate the model
-    model.eval()
-    with torch.no_grad():
-        test_preds = model(X_test).numpy()
-        test_actual = y_test.numpy()
 
     # Plot predictions vs actual
     plt.figure(figsize=(10, 6))
