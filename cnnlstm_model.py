@@ -3,6 +3,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.metrics import mean_squared_error, r2_score
@@ -115,7 +116,7 @@ X_test, X_val, y_test, y_val = train_test_split(X_train_val, y_train_val, test_s
 # Convert to PyTorch tensors
 X_train = torch.FloatTensor(X_train).unsqueeze(1)  # Add channel dimension for CNNLSTM
 X_test = torch.FloatTensor(X_test).unsqueeze(1)
-X_val = torch.FloatTensor(X_val)
+X_val = torch.FloatTensor(X_val).unsqueeze(1)
 y_train = torch.FloatTensor(y_train)
 y_test = torch.FloatTensor(y_test)
 y_val = torch.FloatTensor(y_val)
@@ -143,40 +144,82 @@ test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
 
-# CNNLSTM Model
-class WQICNNLSTM(nn.Module):
-    def __init__(self):
-        super(WQICNNLSTM, self).__init__()
-        self.conv1 = nn.Conv1d(in_channels=12, out_channels=32, kernel_size=3, padding=1)  
-        self.conv2 = nn.Conv1d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
-        self.pool = nn.MaxPool1d(kernel_size=2)
-        self.dropout = nn.Dropout(0.5)
+# CNN-LSTM Hybrid Model
+class CNNLSTM(nn.Module):
+    def __init__(self, num_features, sequence_length):
+        super(CNNLSTM, self).__init__()
+        self.sequence_length = sequence_length
         
-        # Calculate the size after convolutions and pooling
-        self.fc1 = nn.Linear(64, 128)
-        self.fc2 = nn.Linear(128, 64)
-        self.fc3 = nn.Linear(64, 1)
+        # CNN Feature Extractor
+        self.cnn = nn.Sequential(
+            nn.Conv1d(num_features, 64, kernel_size=3, padding=1),
+            nn.BatchNorm1d(64),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+
+            nn.Conv1d(64, 128, kernel_size=3, padding=1),
+            nn.BatchNorm1d(128),
+            nn.ReLU(),
+            nn.MaxPool1d(2),
+            nn.Dropout(0.5),
+
+            nn.Conv1d(128, 256, kernel_size=3, padding=1),
+            nn.BatchNorm1d(256),
+            nn.ReLU(),
+            nn.Dropout(0.5)
+        )
+
+        # LSTM Temporal Processor
+        self.lstm = nn.LSTM(
+            input_size=256,
+            hidden_size=128,
+            num_layers=2,
+            batch_first=True,
+            dropout=0.5,
+            bidirectional=True
+        )
         
+        # Final Prediction Layers
+        self.fc = nn.Sequential(
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(128, 1)
+        )
+    
     def forward(self, x):
-        x = x.squeeze(1).permute(0, 2, 1)
+        # Input shape: [batch, 1, seq_len, features]
+        batch_size = x.size(0)
         
-        x = torch.relu(self.conv1(x))
-        x = self.pool(x)
-        x = torch.relu(self.conv2(x))
-        x = self.pool(x)
-        x = self.dropout(x)
+        # Reshape for CNN: combine seq_len and features
+        x = x.squeeze(1)
+        x = x.permute(0, 2, 1)
         
-        x = x.view(x.size(0), -1)  # Flatten
-        x = torch.relu(self.fc1(x))
-        x = self.dropout(x)
-        x = torch.relu(self.fc2(x))
-        x = self.fc3(x)
+        # CNN processing
+        x = self.cnn(x)
+        
+        # Reshape for LSTM: [batch, seq_len, features]
+        x = x.permute(0, 2, 1)
+        
+        # LSTM processing
+        lstm_out, _ = self.lstm(x)
+        
+        # Take the last time step
+        lstm_out = lstm_out[:, -1, :]
+        
+        # Final prediction
+        x = self.fc(lstm_out)
         return x
-    
-    
+
 if __name__ == '__main__':
-    # Initialize model, loss function, and optimizer
-    model = WQICNNLSTM()
+    # Initialize model
+    num_features = len(features)
+    sequence_length = seq_length
+    model = CNNLSTM(
+        num_features=num_features,
+        sequence_length=sequence_length
+    )
+
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)
 
@@ -296,4 +339,4 @@ if __name__ == '__main__':
     plt.show()
 
     # Save the model
-    torch.save(model.state_dict(), 'wqi_cnn-lstm_model.pth')
+    torch.save(model.state_dict(), 'wqi_cnnlstm_model.pth')

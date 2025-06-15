@@ -157,7 +157,7 @@ class WQILSTM(nn.Module):
             hidden_size=hidden_size,
             num_layers=num_layers,
             batch_first=True,
-            dropout=0.3 if num_layers > 1 else 0
+            dropout=0.5 if num_layers > 1 else 0
         )
         
         # Fully connected layers
@@ -167,9 +167,8 @@ class WQILSTM(nn.Module):
         
     def forward(self, x):
         # Initialize hidden state and cell state
-        device = x.device
-        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(device)
-        c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(device)
+        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size)
+        c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size)
         
         # LSTM forward pass
         out, _ = self.lstm(x, (h0, c0))  # out shape: (batch_size, seq_len, hidden_size)

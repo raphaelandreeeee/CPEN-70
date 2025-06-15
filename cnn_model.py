@@ -147,8 +147,20 @@ val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 class WQICNN(nn.Module):
     def __init__(self):
         super(WQICNN, self).__init__()
-        self.conv1 = nn.Conv1d(in_channels=12, out_channels=32, kernel_size=3, padding=1)  
-        self.conv2 = nn.Conv1d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
+
+        # CNN Layer
+        self.conv1 = nn.Conv1d(
+            in_channels=12, 
+            out_channels=32, 
+            kernel_size=3, 
+            padding=1
+        )  
+        self.conv2 = nn.Conv1d(
+            in_channels=32, 
+            out_channels=64, 
+            kernel_size=3, 
+            padding=1
+        )
         self.pool = nn.MaxPool1d(kernel_size=2)
         self.dropout = nn.Dropout(0.5)
         
