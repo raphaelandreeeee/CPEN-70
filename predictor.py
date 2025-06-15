@@ -182,7 +182,32 @@ if __name__ == '__main__':
         predictor.load_model(model_type, model_path)
     
     # Predict for a specific future date
-    future_date = input(str("Enter a date (YYYY-MM-DD): "))
-    model = input(str("\nChoose a model (CNN, LSTM, CNN-LSTM): ")).lower()
-    prediction = predictor.predict_wqi(future_date, model_type=model)
-    print(f"Predicted WQI for {future_date}: {prediction:.2f}")
+    while True:
+        try:
+            future_date = input(str("Enter a date (YYYY-MM-DD) or 'q' to quit: "))
+            if future_date == 'q':
+                break
+
+            model = input(str("\nChoose a model (CNN, LSTM, CNN_LSTM): ")).lower()
+            if model not in ['cnn', 'lstm', 'cnn_lstm']:
+                print(f"{model} is not one of the models.")
+                break
+
+            prediction = predictor.predict_wqi(future_date, model_type=model)
+            
+            pollutant_level = ""
+            if prediction > 90:
+                pollutant_level = "Excellent"
+            elif 70 <= prediction <= 90:
+                pollutant_level = "Good"
+            elif 50 <= prediction < 70:
+                pollutant_level = "Fair"
+            else:
+                pollutant_level = "Poor"
+            
+            print(f"Predicted WQI for {future_date}: {prediction:.2f}\n"
+                  f"Pollutant Level: {pollutant_level}"
+            )
+
+        except ValueError as e:
+            print(f"{future_date} and {model} are not strings")
