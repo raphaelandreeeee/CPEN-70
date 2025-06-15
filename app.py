@@ -1,3 +1,4 @@
+from flask import Flask, request, jsonify, render_template
 import pandas as pd
 import numpy as np
 import torch
@@ -5,9 +6,76 @@ import torch.nn as nn
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
+import os
+
+# Import model classes
 from cnn_model import WQICNN, calculate_wqi
 from lstm_model import WQILSTM
 from cnnlstm_model import CNNLSTM
+
+app = Flask(__name__)
+
+# Configuration
+DATA_PATHS = {
+    'water': os.path.join("edited", "Water_Parameters_2013-2025.xlsx"),
+    'climate': os.path.join("edited", "Climatological_Parameters_2013-2025.xlsx"),
+    'volcano': os.path.join("edited", "Volcanic_Parameters_2013-2024.xlsx")
+}
+
+MODEL_PATHS = {
+    'cnn': os.path.join("models", "wqi_cnn_model.pth"),
+    'lstm': os.path.join("models", "wqi_lstm_model.pth"),
+    'cnn_lstm': os.path.join("models", "wqi_cnnlstm_model.pth")
+}
+
+# Initialize predictor
+predictor = None
+
+def initialize_predictor():
+    global predictor
+    if predictor is None:
+        predictor = WQIPredictor(DATA_PATHS)
+        # Load models
+        for model_type, model_path in MODEL_PATHS.items():
+            predictor.load_model(model_type, model_path)
+    return predictor
+
+@app.route('/')
+def home():
+    return render_template('index.html')
+
+@app.route('/predict', methods=['POST'])
+def predict():
+    data = request.json
+    target_date = data.get('date')
+    model_type = data.get('model', 'cnn_lstm')
+    
+    try:
+        predictor = initialize_predictor()
+        prediction = predictor.predict_wqi(target_date, model_type=model_type)
+        
+        # Determine water quality level
+        if prediction > 90:
+            level = "Excellent"
+        elif 70 <= prediction <= 90:
+            level = "Good"
+        elif 50 <= prediction < 70:
+            level = "Fair"
+        else:
+            level = "Poor"
+        
+        return jsonify({
+            'status': 'success',
+            'prediction': round(prediction, 2),
+            'level': level,
+            'date': target_date,
+            'model': model_type
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 400
 
 
 class WQIPredictor:
@@ -160,54 +228,5 @@ class WQIPredictor:
         prediction_orig = self.target_scaler.inverse_transform([[prediction]])[0][0]
         return prediction_orig
 
-# Example usage
 if __name__ == '__main__':
-    # Configuration
-    DATA_PATHS = {
-        'water': "edited/Water_Parameters_2013-2025.xlsx",
-        'climate': "edited/Climatological_Parameters_2013-2025.xlsx",
-        'volcano': "edited/Volcanic_Parameters_2013-2024.xlsx"
-    }
-    MODEL_PATHS = {
-        'cnn': 'models/wqi_cnn_model.pth',
-        'lstm': 'models/wqi_lstm_model.pth',
-        'cnn_lstm': 'models/wqi_cnnlstm_model.pth'
-    }
-    
-    # Create predictor
-    predictor = WQIPredictor(DATA_PATHS)
-    
-    # Load models
-    for model_type, model_path in MODEL_PATHS.items():
-        predictor.load_model(model_type, model_path)
-    
-    # Predict for a specific future date
-    while True:
-        try:
-            future_date = input(str("Enter a date (YYYY-MM-DD) or 'q' to quit: "))
-            if future_date == 'q':
-                break
-
-            model = input(str("\nChoose a model (CNN, LSTM, CNN_LSTM): ")).lower()
-            if model not in ['cnn', 'lstm', 'cnn_lstm']:
-                print(f"{model} is not one of the models.")
-                break
-
-            prediction = predictor.predict_wqi(future_date, model_type=model)
-            
-            pollutant_level = ""
-            if prediction > 90:
-                pollutant_level = "Excellent"
-            elif 70 <= prediction <= 90:
-                pollutant_level = "Good"
-            elif 50 <= prediction < 70:
-                pollutant_level = "Fair"
-            else:
-                pollutant_level = "Poor"
-            
-            print(f"Predicted WQI for {future_date}: {prediction:.2f}\n"
-                  f"Pollutant Level: {pollutant_level}"
-            )
-
-        except ValueError as e:
-            print(f"{future_date} and {model} are not strings")
+    app.run(debug=True)

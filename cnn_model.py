@@ -308,4 +308,4 @@ if __name__ == '__main__':
     plt.show()
 
     # Save the model
-    torch.save(model.state_dict(), 'wqi_cnn_model.pth')
+    torch.save(model.state_dict(), 'models/wqi_cnn_model.pth')
