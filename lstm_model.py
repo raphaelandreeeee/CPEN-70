@@ -144,7 +144,6 @@ val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
 
 # LSTM Model
-# LSTM Model Definition
 class WQILSTM(nn.Module):
     def __init__(self, input_size, hidden_size=64, num_layers=2):
         super(WQILSTM, self).__init__()
@@ -157,7 +156,7 @@ class WQILSTM(nn.Module):
             hidden_size=hidden_size,
             num_layers=num_layers,
             batch_first=True,
-            dropout=0.5 if num_layers > 1 else 0
+            dropout=0.5
         )
         
         # Fully connected layers
@@ -191,7 +190,7 @@ if __name__ == '__main__':
     optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)
 
     # Early stop parameters
-    patience = 20
+    patience = 15
     best_val_loss = float('inf')
     epochs_no_improve = 0
 
@@ -245,7 +244,7 @@ if __name__ == '__main__':
                   f'Val Loss: {avg_val_loss:.6f}, '
                   f'Test Loss: {avg_test_loss:.6f}')
             
-         # Early stopping check
+        # Early stopping check
         # if avg_val_loss < best_val_loss:
         #     best_val_loss = avg_val_loss
         #     torch.save(model.state_dict(), 'best_model.pth')
@@ -306,4 +305,4 @@ if __name__ == '__main__':
     plt.show()
 
     # Save the model
-    torch.save(model.state_dict(), 'wqi_lstm_model.pth')
+    torch.save(model.state_dict(), 'models/wqi_lstm_model.pth')

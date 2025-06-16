@@ -20,8 +20,8 @@ with open("edited/Water_Parameters_2013-2025.xlsx", "rb") as f1, \
     ex_data2 = pd.read_excel(f3)
 
 # DATA PROCESSING
-# # Drop rows with too many missing values
-# data = data.dropna(thresh=len(data.columns) - 3)
+# Drop rows with too many missing values
+data = data.dropna(thresh=len(data.columns) - 3)
 
 # Drop unnecessary columns
 ex_data1 = ex_data1.drop(columns=["RH", "WIND_SPEED", "WIND_DIRECTION"])
@@ -161,17 +161,17 @@ class CNNLSTM(nn.Module):
             nn.BatchNorm1d(128),
             nn.ReLU(),
             nn.MaxPool1d(2),
-            nn.Dropout(0.5),
+            nn.Dropout(0.7),
 
-            nn.Conv1d(128, 256, kernel_size=3, padding=1),
-            nn.BatchNorm1d(256),
+            nn.Conv1d(128, 64, kernel_size=3, padding=1),
+            nn.BatchNorm1d(64),
             nn.ReLU(),
             nn.Dropout(0.5)
         )
 
         # LSTM Temporal Processor
         self.lstm = nn.LSTM(
-            input_size=256,
+            input_size=64,
             hidden_size=128,
             num_layers=2,
             batch_first=True,
@@ -183,7 +183,7 @@ class CNNLSTM(nn.Module):
         self.fc = nn.Sequential(
             nn.Linear(256, 128),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            nn.Dropout(0.7),
             nn.Linear(128, 1)
         )
     
@@ -278,16 +278,16 @@ if __name__ == '__main__':
                   f'Val Loss: {avg_val_loss:.6f}, '
                   f'Test Loss: {avg_test_loss:.6f}')
             
-         # Early stopping check
-        if avg_val_loss < best_val_loss:
-            best_val_loss = avg_val_loss
-            torch.save(model.state_dict(), 'best_model.pth')
-            epochs_no_improve = 0
-        else:
-            epochs_no_improve += 1
-            if epochs_no_improve >= patience:
-                print(f'\nEarly stopping at epoch {epoch+1}')
-                break
+        # Early stopping check
+        # if avg_val_loss < best_val_loss:
+        #     best_val_loss = avg_val_loss
+        #     torch.save(model.state_dict(), 'best_model.pth')
+        #     epochs_no_improve = 0
+        # else:
+        #     epochs_no_improve += 1
+        #     if epochs_no_improve >= patience:
+        #         print(f'\nEarly stopping at epoch {epoch+1}')
+        #         break
 
 
  # Evaluate the model on test set
@@ -305,6 +305,8 @@ if __name__ == '__main__':
     
     # Inverse transform predictions
     test_preds_orig = target_scaler.inverse_transform(test_preds.reshape(-1, 1))
+    for item in test_preds_orig:
+        print(item[0])
     test_actual_orig = target_scaler.inverse_transform(test_actual.reshape(-1, 1))
     
     # Calculate quantitative metrics
@@ -339,4 +341,4 @@ if __name__ == '__main__':
     plt.show()
 
     # Save the model
-    torch.save(model.state_dict(), 'wqi_cnnlstm_model.pth')
+    torch.save(model.state_dict(), 'models/wqi_cnnlstm_model.pth')

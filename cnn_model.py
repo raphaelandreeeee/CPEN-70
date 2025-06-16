@@ -19,8 +19,8 @@ with open("edited/Water_Parameters_2013-2025.xlsx", "rb") as f1, \
     ex_data2 = pd.read_excel(f3)
 
 # DATA PROCESSING
-# # Drop rows with too many missing values
-# data = data.dropna(thresh=len(data.columns) - 3)
+# Drop rows with too many missing values
+data = data.dropna(thresh=len(data.columns) - 3)
 
 # Drop unnecessary columns
 ex_data1 = ex_data1.drop(columns=["RH", "WIND_SPEED", "WIND_DIRECTION"])
